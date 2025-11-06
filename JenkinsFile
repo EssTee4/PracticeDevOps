@@ -15,7 +15,7 @@ pipeline {
         stage('Build Docker Image') {
             steps {
                 script {
-                    sh 'docker build -t ${IMAGE_NAME}:latest .'
+                    bat 'docker build -t ${IMAGE_NAME}:latest .'
                 }
             }
         }
@@ -23,9 +23,9 @@ pipeline {
         stage('Run Container') {
             steps {
                 script {
-                    sh 'docker stop practicedevops || true'
-                    sh 'docker rm practicedevops || true'
-                    sh 'docker run -d -p 8081:80 --name practicedevops ${IMAGE_NAME}:latest'
+                    bat 'docker stop practicedevops || true'
+                    bat 'docker rm practicedevops || true'
+                    bat 'docker run -d -p 8081:80 --name practicedevops ${IMAGE_NAME}:latest'
                 }
             }
         }
