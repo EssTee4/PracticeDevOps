@@ -13,7 +13,7 @@ pipeline{
     }
     }
     post{
-        sucess{
+        success{
             bat "built sucessfull"
         }
         failure{
