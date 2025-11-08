@@ -19,8 +19,8 @@ pipeline {
             steps {
                 script {
                     echo "Stopping existing container if running..."
-                    bat "docker stop ${IMAGE_NAME} || exit 0"
-                    bat "docker rm ${IMAGE_NAME} || exit 0"
+                    sh "docker stop ${IMAGE_NAME} || exit 0"
+                    sh "docker rm ${IMAGE_NAME} || exit 0"
                 }
             }
         }
@@ -29,7 +29,7 @@ pipeline {
             steps {
                 script {
                     echo "Running new container on port 1234"
-                    bat "docker run -d -p 1234:80 --name ${IMAGE_NAME} ${DOCKER_USER}/${IMAGE_NAME}:latest"
+                    sh "docker run -d -p 1234:80 --name ${IMAGE_NAME} ${DOCKER_USER}/${IMAGE_NAME}:latest"
                 }
             }
         }
