@@ -25,5 +25,11 @@ pipeline {
                 }
             }
         }
+         stage('Cleanup') {
+            steps {
+                echo "🧹 Cleaning up local images..."
+                sh "docker rmi ${env.IMAGE_NAME}:latest || exit 0"
+            }
+        }
     }
 }
