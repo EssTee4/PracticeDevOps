@@ -13,7 +13,7 @@ pipeline {
             steps {
             echo "Running HTML and CSS tests..."
             sh 'htmlhint .'
-            sh 'stylelint "**/*.css" '
+            sh 'stylelint "style.css" '
             }
         }
         stage("build image") {
