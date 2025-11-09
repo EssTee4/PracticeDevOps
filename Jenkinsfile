@@ -18,7 +18,7 @@ pipeline {
         stage('Link Check') {
             steps {
             echo "🔗 Checking for broken links..."
-            bat 'linkinator ./index.html --recurse'
+            sh 'linkinator ./index.html --recurse'
             }
         }
 
