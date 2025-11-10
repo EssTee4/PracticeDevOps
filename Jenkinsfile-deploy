@@ -15,6 +15,14 @@ pipeline {
             }
         }
 
+        stage('Pull stable Image') {
+            steps {
+                script {
+                    sh "docker pull ${DOCKER_USER}/${IMAGE_NAME}:stable || echo 'stable version not found'"
+                }
+            }
+        }
+    
         stage('Stop Previous Container') {
             steps {
                 script {
@@ -32,6 +40,38 @@ pipeline {
                     sh "docker run -d -p 1234:80 --name ${IMAGE_NAME} ${DOCKER_USER}/${IMAGE_NAME}:latest"
                 }
             }
+        }
+
+        stage('Verify Deployment') {
+            steps {
+                script {
+                    def status = sh(script: "docker ps | grep ${IMAGE_NAME} | wc -l", returnStdout: true).trim()
+                    if (status == "1") {
+                        echo "Deployment successful."
+                    } else {
+                        error("Deployment failed!")
+                    }
+                }
+            }
+        }
+    }
+    post {
+        success {
+            echo "Tagging deployed image as stable..."
+            sh '''
+                docker tag ${DOCKER_USER}/${IMAGE_NAME}:stable ${DOCKER_USER}/${IMAGE_NAME}:${BUILD_NUMBER}
+                docker push ${DOCKER_USER}/${IMAGE_NAME}:${BUILD_NUMBER}
+                docker tag ${DOCKER_USER}/${IMAGE_NAME}:latest ${DOCKER_USER}/${IMAGE_NAME}:stable
+                docker push ${DOCKER_USER}/${IMAGE_NAME}:stable
+            '''
+        }
+        failure {
+            echo "Deployment failed, rolling back..."
+            sh '''
+                docker stop ${IMAGE_NAME}
+                docker rm ${IMAGE_NAME}
+                docker run -d -p 1234:80 --name ${IMAGE_NAME} ${DOCKER_USER}/${IMAGE_NAME}:stable || echo "No backup image to roll back!"
+            '''
         }
     }
 }
