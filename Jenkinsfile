@@ -36,7 +36,7 @@ pipeline {
 
         /* -------- Develop Branch (Testing Env - Port 2222) -------- */
         stage('Develop Build & Deploy') {
-            when { branch 'develop' }
+            when { branch 'dev' }
             steps {
                 echo "🧪 Building and deploying from develop branch..."
                 checkout scm
@@ -179,3 +179,4 @@ pipeline {
         failure { echo "❌ Pipeline failed for ${env.BRANCH_NAME}" }
     }
 }
+
