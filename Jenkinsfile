@@ -16,6 +16,7 @@ pipeline {
                 checkout scm
                 script {
                     def featureTag = env.BRANCH_NAME.replaceAll('/', '-')
+                    echo "Branch name: ${featureTag}"
                     sh "docker build -t ${DOCKER_USER}/${IMAGE_NAME}:${featureTag} ."
                     withCredentials([usernamePassword(credentialsId: 'dockerhub', usernameVariable: 'dockerUser', passwordVariable: 'dockerPass')]) {
                         sh '''
@@ -168,3 +169,4 @@ pipeline {
         failure { echo "❌ Pipeline failed for ${env.BRANCH_NAME}" }
     }
 }
+
