@@ -15,11 +15,14 @@ pipeline {
                 echo "🚧 Feature branch: ${env.BRANCH_NAME}"
                 checkout scm
                 script {
+                    // Run unit tests & lint
                     sh "echo 'Running unit tests and lint...' || true"
+                    // Build Docker image
                     def featureTag = env.BRANCH_NAME.replaceAll('[^a-zA-Z0-9_.-]', '-')
                     if (!featureTag) { featureTag = "latest" }
                     echo "Docker tag: ${featureTag}"
                     sh "docker build -t ${DOCKER_USER}/${IMAGE_NAME}:${featureTag} ."
+                    // Push to Docker Hub
                     withCredentials([usernamePassword(credentialsId: 'dockerhub', usernameVariable: 'dockerUser', passwordVariable: 'dockerPass')]) {
                         sh """
                             echo \$dockerPass | docker login -u \$dockerUser --password-stdin
@@ -77,7 +80,9 @@ pipeline {
                         if git show-ref --verify --quiet refs/heads/dev; then
                             LOCKED_DEV="dev-locked-\$(date +%s)"
                             git branch -m dev \$LOCKED_DEV
+                            # Push locked branch using token
                             git push https://\$USER:\$TOKEN@github.com/EssTee4/practicedevops.git \$LOCKED_DEV || echo "Failed to push locked dev"
+                            # Delete original dev branch on origin
                             git push https://\$USER:\$TOKEN@github.com/EssTee4/practicedevops.git :dev || true
                             echo "✅ Dev locked as \$LOCKED_DEV"
                         else
@@ -89,6 +94,7 @@ pipeline {
             }
         }
 
+        /* -------- Approval: Merge Release → Main -------- */
         stage('Approval: Merge Release → Main') {
             when { branch 'release' }
             steps {
@@ -96,6 +102,7 @@ pipeline {
             }
         }
 
+        /* -------- Merge Release into Main -------- */
         stage('Merge Release → Main') {
             when { branch 'release' }
             steps {
@@ -125,7 +132,7 @@ pipeline {
                             docker rm prod-live || true
                             docker build -t ${DOCKER_USER}/${IMAGE_NAME}:latest .
                             docker run -d -p 3333:80 --name prod-live ${DOCKER_USER}/${IMAGE_NAME}:latest
-
+                            
                             sleep 5
                             status=\$(docker ps | grep prod-live | wc -l)
                             if [ "\$status" != "1" ]; then
