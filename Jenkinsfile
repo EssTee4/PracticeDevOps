@@ -78,16 +78,9 @@ stage('Release Build & Staging') {
             sh """
                 git fetch origin dev:dev || echo "Dev branch not found"
                 if git show-ref --verify --quiet refs/heads/dev; then
-                    LOCKED_DEV="dev-locked-\$(date +%s)"
-                    git branch -m dev \$LOCKED_DEV
-
-                    git push https://\$USER:\$TOKEN@github.com/EssTee4/practicedevops.git \$LOCKED_DEV || echo "Failed to push locked dev"
                     git push https://\$USER:\$TOKEN@github.com/EssTee4/practicedevops.git :dev || true
-
-                    echo "✅ Dev locked as \$LOCKED_DEV"
                 else
                     echo "⚠️ Dev branch not found, skipping lock"
-                    exit 1
                 fi
             """
         }
@@ -186,5 +179,6 @@ stage('Release Build & Staging') {
         failure { echo "❌ Pipeline failed for ${env.BRANCH_NAME}" }
     }
 }
+
 
 
