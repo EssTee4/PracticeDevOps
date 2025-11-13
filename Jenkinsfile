@@ -76,12 +76,15 @@ pipeline {
                     sh """
                         git config user.name "jenkins"
                         git config user.email "jenkins@ci.local"
-                        git fetch origin dev || echo "Dev branch not found"
-                        if git show-ref --verify --quiet refs/heads/dev; then
+                        git fetch origin dev || echo "Dev branch not found on remote"
+
+                        if git show-ref --verify --quiet refs/remotes/origin/dev; then
+                            echo "✅ Remote dev branch found, locking..."
+                            git checkout -b dev origin/dev
                             LOCKED_DEV="dev-locked-\$(date +%s)"
                             git branch -m dev \$LOCKED_DEV
-                            git push https://\$USER:\$TOKEN@github.com/EssTee4/practicedevops.git \$LOCKED_DEV || echo "Failed to push locked dev"
-                            git push https://\$USER:\$TOKEN@github.com/EssTee4/practicedevops.git dev || true
+                            git push https://\$USER:\$TOKEN@github.com/EssTee4/practicedevops.git :dev || true
+                            git push https://\$USER:\$TOKEN@github.com/EssTee4/practicedevops.git \$LOCKED_DEV
                             echo "✅ Dev locked as \$LOCKED_DEV"
                         else
                             echo "⚠️ Dev branch not found, skipping lock safely"
