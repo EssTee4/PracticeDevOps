@@ -95,23 +95,24 @@ stage('Release Build & Staging') {
                 input message: "✅ Approve merging release to main?"
             }
         }
-
-        /* -------- Merge Release into Main -------- */
+            
+            /* -------- Merge Release into Main -------- */
         stage('Merge Release → Main') {
             when { branch 'release' }
             steps {
                 withCredentials([usernamePassword(credentialsId: 'github', usernameVariable: 'USER', passwordVariable: 'TOKEN')]) {
-                    sh """
-                        git config user.name "jenkins"
-                        git config user.email "jenkins@ci.local"
-                        git fetch origin main
-                        git checkout main
-                        git merge --no-ff origin/release -m "Merge release into main"
-                        git push https://\$USER:\$TOKEN@github.com/EssTee4/practicedevops.git main
-                    """
-                }
+                sh """
+                    git config user.name "jenkins"
+                    git config user.email "jenkins@ci.local"
+                    git fetch origin main
+                    git checkout main
+                    git pull origin main --rebase || true
+                    git merge --no-ff origin/release -m "Merge release into main"
+                    git push https://\$USER:\$TOKEN@github.com/EssTee4/practicedevops.git main
+                """
             }
         }
+    }
 
         /* -------- Main Branch Production Deploy -------- */
         stage('Production Deployment') {
@@ -179,6 +180,7 @@ stage('Release Build & Staging') {
         failure { echo "❌ Pipeline failed for ${env.BRANCH_NAME}" }
     }
 }
+
 
 
 
