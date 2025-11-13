@@ -74,12 +74,14 @@ pipeline {
                 echo "🔒 Locking dev branch..."
                 withCredentials([usernamePassword(credentialsId: 'github', usernameVariable: 'USER', passwordVariable: 'TOKEN')]) {
                     sh """
-                        git fetch origin dev:dev || echo "Dev branch not found"
+                        git config user.name "jenkins"
+                        git config user.email "jenkins@ci.local"
+                        git fetch origin dev || echo "Dev branch not found"
                         if git show-ref --verify --quiet refs/heads/dev; then
                             LOCKED_DEV="dev-locked-\$(date +%s)"
                             git branch -m dev \$LOCKED_DEV
-                            git push origin \$LOCKED_DEV || echo "Failed to push locked dev"
-                            git push origin :dev || true
+                            git push https://\$USER:\$TOKEN@github.com/EssTee4/practicedevops.git \$LOCKED_DEV || echo "Failed to push locked dev"
+                            git push https://\$USER:\$TOKEN@github.com/EssTee4/practicedevops.git dev || true
                             echo "✅ Dev locked as \$LOCKED_DEV"
                         else
                             echo "⚠️ Dev branch not found, skipping lock"
@@ -183,5 +185,6 @@ pipeline {
         failure { echo "❌ Pipeline failed for ${env.BRANCH_NAME}" }
     }
 }
+
 
 
