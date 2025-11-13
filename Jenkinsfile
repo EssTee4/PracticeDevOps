@@ -15,9 +15,7 @@ pipeline {
                 echo "🚧 Feature branch: ${env.BRANCH_NAME}"
                 checkout scm
                 script {
-                    // Run unit tests & lint
                     sh "echo 'Running unit tests and lint...' || true"
-                    // Build Docker image
                     def featureTag = env.BRANCH_NAME.replaceAll('[^a-zA-Z0-9_.-]', '-')
                     if (!featureTag) { featureTag = "latest" }
                     echo "Docker tag: ${featureTag}"
@@ -56,42 +54,40 @@ pipeline {
         }
 
         /* -------- Release Branch -------- */
-        /* -------- Release Branch -------- */
-stage('Release Build & Staging') {
-    when { branch 'release' }
-    steps {
-        echo "🚀 Release branch staging deploy"
-        sh "docker build -t ${DOCKER_USER}/${IMAGE_NAME}:staging ."
-        withCredentials([usernamePassword(credentialsId: 'dockerhub', usernameVariable: 'dockerUser', passwordVariable: 'dockerPass')]) {
-            sh """
-                echo \$dockerPass | docker login -u \$dockerUser --password-stdin
-                docker push ${DOCKER_USER}/${IMAGE_NAME}:staging
-                docker stop staging || true
-                docker rm staging || true
-                docker run -d -p 4444:80 --name staging ${DOCKER_USER}/${IMAGE_NAME}:staging
-                echo 'Running acceptance tests...'
-                docker logout
-            """
-        }
+        stage('Release Build & Staging') {
+            when { branch 'release' }
+            steps {
+                echo "🚀 Release branch staging deploy"
+                sh "docker build -t ${DOCKER_USER}/${IMAGE_NAME}:staging ."
+                withCredentials([usernamePassword(credentialsId: 'dockerhub', usernameVariable: 'dockerUser', passwordVariable: 'dockerPass')]) {
+                    sh """
+                        echo \$dockerPass | docker login -u \$dockerUser --password-stdin
+                        docker push ${DOCKER_USER}/${IMAGE_NAME}:staging
+                        docker stop staging || true
+                        docker rm staging || true
+                        docker run -d -p 4444:80 --name staging ${DOCKER_USER}/${IMAGE_NAME}:staging
+                        echo 'Running acceptance tests...'
+                        docker logout
+                    """
+                }
 
-        echo "🔒 Locking dev branch..."
-        withCredentials([usernamePassword(credentialsId: 'github', usernameVariable: 'USER', passwordVariable: 'TOKEN')]) {
-            sh """
-                git fetch origin dev:dev || echo "Dev branch not found"
-                if git show-ref --verify --quiet refs/heads/dev; then
-                    LOCKED_DEV="dev-locked-\$(date +%s)"
-                    git branch -m dev \$LOCKED_DEV
-
-                    # ✅ Corrected token substitution
-                    git push https://\$USER:\$TOKEN@github.com/EssTee4/practicedevops.git \$LOCKED_DEV || echo "Failed to push locked dev"
-                    git push https://\$USER:\$TOKEN@github.com/EssTee4/practicedevops.git :dev || true
-
-                    echo "✅ Dev locked as \$LOCKED_DEV"
-                else
-                    echo "⚠️ Dev branch not found, skipping lock"
-                    exit 1
-                fi
-            """
+                echo "🔒 Locking dev branch..."
+                withCredentials([usernamePassword(credentialsId: 'github', usernameVariable: 'USER', passwordVariable: 'TOKEN')]) {
+                    sh """
+                        git fetch origin dev:dev || echo "Dev branch not found"
+                        if git show-ref --verify --quiet refs/heads/dev; then
+                            LOCKED_DEV="dev-locked-\$(date +%s)"
+                            git branch -m dev \$LOCKED_DEV
+                            git push origin \$LOCKED_DEV || echo "Failed to push locked dev"
+                            git push origin :dev || true
+                            echo "✅ Dev locked as \$LOCKED_DEV"
+                        else
+                            echo "⚠️ Dev branch not found, skipping lock"
+                            exit 1
+                        fi
+                    """
+                }
+            }
         }
     }
 }
@@ -105,7 +101,6 @@ stage('Release Build & Staging') {
             }
         }
 
-        /* -------- Merge Release into Main -------- */
         stage('Merge Release → Main') {
             when { branch 'release' }
             steps {
