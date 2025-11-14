@@ -74,6 +74,7 @@ pipeline {
                     echo '⏳ Waiting for dev container...'
                     sleep 5
                     echo '🔍 Running Dev health check...'
+                    docker exec dev-test curl -f http://localhost/
                     curl -f http://localhost:2222/ || exit 1
                 """
             }
@@ -196,3 +197,4 @@ pipeline {
         failure { echo "❌ Pipeline failed for ${env.BRANCH_NAME}" }
     }
 }
+
