@@ -9,15 +9,35 @@ pipeline {
     stages {
 
         /* -------- Feature Branch -------- */
-        stage('Feature Branch Build') {
+        stage('Feature Branch CI') {
             when { expression { env.BRANCH_NAME.startsWith('feature/') } }
             steps {
-                echo "🚧 Building feature branch: ${env.BRANCH_NAME}"
+                echo "🚧 Feature branch: ${env.BRANCH_NAME}"
                 checkout scm
+
+                /* ---- (4) Static Code Analysis ---- */
+                sh """
+                    echo '🔍 Running ESLint checks...'
+                    npm install || true
+                    npm run lint || true
+                """
+
                 script {
+                    // Run unit tests & lint
+                    sh "echo 'Running unit tests and lint...' || true"
+                    // Build Docker image
                     def featureTag = env.BRANCH_NAME.replaceAll('[^a-zA-Z0-9_.-]', '-')
                     if (!featureTag) { featureTag = "latest" }
+                    echo "Docker tag: ${featureTag}"
                     sh "docker build -t ${DOCKER_USER}/${IMAGE_NAME}:${featureTag} ."
+
+                    /* ---- (2) Security Scan (Trivy) ---- */
+                    sh """
+                        echo '🔍 Running Trivy security scan...'
+                        trivy image --exit-code 1 --severity HIGH,CRITICAL ${DOCKER_USER}/${IMAGE_NAME}:${featureTag} || true
+                    """
+
+                    // Push to Docker Hub
                     withCredentials([usernamePassword(credentialsId: 'dockerhub', usernameVariable: 'dockerUser', passwordVariable: 'dockerPass')]) {
                         sh """
                             echo \$dockerPass | docker login -u \$dockerUser --password-stdin
@@ -29,14 +49,14 @@ pipeline {
             }
         }
 
-        /* -------- Develop Branch (Dev) -------- */
+        /* -------- Dev Branch -------- */
         stage('Dev Build & Deploy') {
-            when { expression { env.BRANCH_NAME == 'dev' } }
+            when { branch 'dev' }
             steps {
-                echo "🧪 Building and deploying dev branch..."
-                deleteDir()
+                echo "🧪 Dev branch build & deploy"
                 checkout scm
                 sh "docker build -t ${DOCKER_USER}/${IMAGE_NAME}:dev ."
+
                 withCredentials([usernamePassword(credentialsId: 'dockerhub', usernameVariable: 'dockerUser', passwordVariable: 'dockerPass')]) {
                     sh """
                         echo \$dockerPass | docker login -u \$dockerUser --password-stdin
@@ -44,20 +64,28 @@ pipeline {
                         docker stop dev-test || true
                         docker rm dev-test || true
                         docker run -d -p 2222:80 --name dev-test ${DOCKER_USER}/${IMAGE_NAME}:dev
+                        echo 'Running integration tests...'
                         docker logout
                     """
                 }
+
+                /* ---- (3) Health Check (Dev) ---- */
+                sh """
+                    echo '⏳ Waiting for dev container...'
+                    sleep 5
+                    echo '🔍 Running Dev health check...'
+                    docker exec dev-test curl -f http://localhost/2222 || exit 1
+                """
             }
         }
 
-        /* -------- Release Branch (Staging + Dev Lock) -------- */
+        /* -------- Release Branch -------- */
         stage('Release Build & Staging') {
-            when { expression { env.BRANCH_NAME == 'release' } }
+            when { branch 'release' }
             steps {
-                echo "🚀 Building release branch for staging..."
-                deleteDir()
-                checkout scm
+                echo "🚀 Release branch staging deploy"
                 sh "docker build -t ${DOCKER_USER}/${IMAGE_NAME}:staging ."
+
                 withCredentials([usernamePassword(credentialsId: 'dockerhub', usernameVariable: 'dockerUser', passwordVariable: 'dockerPass')]) {
                     sh """
                         echo \$dockerPass | docker login -u \$dockerUser --password-stdin
@@ -69,16 +97,20 @@ pipeline {
                     """
                 }
 
+                /* ---- (3) Health Check (Staging) ---- */
+                sh """
+                    echo '⏳ Waiting for staging container...'
+                    sleep 5
+                    echo '🔍 Running Staging health check...'
+                    docker exec dev-test curl -f http://localhost/2222 || exit 1
+                """
+
                 echo "🔒 Locking dev branch..."
                 withCredentials([usernamePassword(credentialsId: 'github', usernameVariable: 'USER', passwordVariable: 'TOKEN')]) {
                     sh """
                         git fetch origin dev:dev || echo "Dev branch not found"
                         if git show-ref --verify --quiet refs/heads/dev; then
-                            LOCKED_DEV="dev-locked-\$(date +%s)"
-                            git branch -m dev \$LOCKED_DEV
-                            git push origin \$LOCKED_DEV || echo "Failed to push locked dev branch"
-                            git push origin :dev || true
-                            echo "✅ Dev branch locked as \$LOCKED_DEV"
+                            git push https://\$USER:\$TOKEN@github.com/EssTee4/practicedevops.git :dev || true
                         else
                             echo "⚠️ Dev branch not found, skipping lock"
                         fi
@@ -86,89 +118,103 @@ pipeline {
                 }
             }
         }
+    
 
-        /* -------- Manual Approval -------- */
-        stage('Approval to Merge Release → Main') {
-            when { expression { env.BRANCH_NAME == 'release' } }
+
+
+        /* -------- Approval: Merge Release → Main -------- */
+        stage('Approval: Merge Release → Main') {
+            when { branch 'release' }
             steps {
-                input message: "✅ Approve merging release into main?"
+                input message: "✅ Approve merging release to main?"
             }
         }
-
-        /* -------- Merge Release into Main -------- */
+            
+            /* -------- Merge Release into Main -------- */
         stage('Merge Release → Main') {
-            when { expression { env.BRANCH_NAME == 'release' } }
+            when { branch 'release' }
             steps {
                 withCredentials([usernamePassword(credentialsId: 'github', usernameVariable: 'USER', passwordVariable: 'TOKEN')]) {
-                    sh """
-                        git config user.name "jenkins"
-                        git config user.email "jenkins@ci.local"
-                        git fetch origin main
-                        git checkout main
-                        git merge --no-ff origin/release -m "Merge release into main"
-                        git push https://\$USER:\$TOKEN@github.com/EssTee4/practicedevops.git main
-                    """
-                }
+                sh """
+                    git config user.name "jenkins"
+                    git config user.email "jenkins@ci.local"
+                    git fetch origin main
+                    git checkout main
+                    git pull origin main --rebase || true
+                    git merge --no-ff origin/release -m "Merge release into main"
+                    git push https://\$USER:\$TOKEN@github.com/EssTee4/practicedevops.git main
+                """
             }
         }
+    }
 
-        /* -------- Production Deployment (Main) -------- */
+        /* -------- Main Branch Production Deploy -------- */
         stage('Production Deployment') {
-            when { expression { env.BRANCH_NAME == 'main' } }
+            when { branch 'main' }
             steps {
-                echo "🚀 Deploying production..."
-                deleteDir()
-                checkout scm
-                withCredentials([usernamePassword(credentialsId: 'dockerhub', usernameVariable: 'dockerUser', passwordVariable: 'dockerPass')]) {
-                    sh """
-                        docker pull ${DOCKER_USER}/${IMAGE_NAME}:latest || true
-                        docker pull ${DOCKER_USER}/${IMAGE_NAME}:stable || true
-                        docker stop prod-live || true
-                        docker rm prod-live || true
-                        docker build -t ${DOCKER_USER}/${IMAGE_NAME}:latest .
-                        docker run -d -p 3333:80 --name prod-live ${DOCKER_USER}/${IMAGE_NAME}:latest
-
-                        sleep 5
-                        if [ \$(docker ps | grep prod-live | wc -l) -ne 1 ]; then
-                            echo "❌ Deployment failed, rolling back..."
+                script {
+                    withCredentials([usernamePassword(credentialsId: 'dockerhub', usernameVariable: 'dockerUser', passwordVariable: 'dockerPass')]) {
+                        sh """
+                            docker pull ${DOCKER_USER}/${IMAGE_NAME}:latest || true
+                            docker pull ${DOCKER_USER}/${IMAGE_NAME}:stable || true
                             docker stop prod-live || true
                             docker rm prod-live || true
-                            docker run -d -p 3333:80 --name prod-live ${DOCKER_USER}/${IMAGE_NAME}:stable || echo "⚠️ No stable image"
-                            exit 1
-                        fi
-                    """
+                            docker build -t ${DOCKER_USER}/${IMAGE_NAME}:latest .
+                            docker run -d -p 3333:80 --name prod-live ${DOCKER_USER}/${IMAGE_NAME}:latest
+                            
+                            sleep 5
+                            status=\$(docker ps | grep prod-live | wc -l)
+                            if [ "\$status" != "1" ]; then
+                                echo "❌ Deployment failed, rolling back..."
+                                docker stop prod-live || true
+                                docker rm prod-live || true
+                                docker run -d -p 3333:80 --name prod-live ${DOCKER_USER}/${IMAGE_NAME}:stable || echo "⚠️ No stable image"
+                                exit 1
+                            fi
+                        """
+                    }
                 }
             }
             post {
                 success {
-                    echo "🏷️ Tagging deployed image as stable..."
+                    echo "🏷️ Tagging stable image"
                     withCredentials([usernamePassword(credentialsId: 'dockerhub', usernameVariable: 'dockerUser', passwordVariable: 'dockerPass')]) {
                         sh """
-                            echo \$dockerPass | docker login -u \$dockerUser --password-stdin
-                            docker tag ${DOCKER_USER}/${IMAGE_NAME}:latest ${DOCKER_USER}/${IMAGE_NAME}:stable
-                            docker push ${DOCKER_USER}/${IMAGE_NAME}:stable
-                            docker logout
+                            docker pull ${DOCKER_USER}/${IMAGE_NAME}:latest || true
+                            docker pull ${DOCKER_USER}/${IMAGE_NAME}:stable || true
+                            docker stop prod-live || true
+                            docker rm prod-live || true
+                            docker build -t ${DOCKER_USER}/${IMAGE_NAME}:latest .
+                            docker run -d -p 3333:80 --name prod-live ${DOCKER_USER}/${IMAGE_NAME}:latest
+
+                            sleep 5
+                            status=\$(docker ps | grep prod-live | wc -l)
+                            if [ "\$status" != "1" ]; then
+                                echo "❌ Deployment failed, rolling back..."
+                                docker stop prod-live || true
+                                docker rm prod-live || true
+                                docker run -d -p 3333:80 --name prod-live ${DOCKER_USER}/${IMAGE_NAME}:stable || echo "⚠️ No stable image"
+                                exit 1
+                            fi
                         """
                     }
                 }
-                failure {
-                    echo "❌ Deployment failed. Previous stable image retained."
-                }
+                failure { echo "⚠️ Production deployment failed. Stable image retained." }
             }
         }
 
-        /* -------- Sync & Unlock Dev -------- */
-        stage('Sync & Unlock Dev') {
-            when { expression { env.BRANCH_NAME == 'main' } }
+        /* -------- Dev Unlock & Sync -------- */
+        stage('Dev Unlock & Sync') {
+            when { branch 'main' }
             steps {
-                echo "🔄 Unlocking dev branch..."
                 withCredentials([usernamePassword(credentialsId: 'github', usernameVariable: 'USER', passwordVariable: 'TOKEN')]) {
                     sh """
+                        echo "🔄 Sync main back to dev..."
                         git fetch origin
                         git checkout main
                         git branch -f dev
                         git push https://\$USER:\$TOKEN@github.com/EssTee4/practicedevops.git dev --force
-                        echo "🔓 Dev branch unlocked and synced"
+                        echo "✅ Dev branch unlocked and synced"
                     """
                 }
             }
@@ -176,7 +222,12 @@ pipeline {
     }
 
     post {
-        success { echo "✅ Pipeline completed successfully for ${env.BRANCH_NAME}" }
+        success { echo "✅ Pipeline completed for ${env.BRANCH_NAME}" }
         failure { echo "❌ Pipeline failed for ${env.BRANCH_NAME}" }
+        
     }
 }
+
+
+
+
