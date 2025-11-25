@@ -1,7 +1,8 @@
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
-    // API route example
+
+    // API routes
     if (url.pathname.startsWith("/api")) {
       if (url.pathname === "/api/hello") {
         return new Response(JSON.stringify({ message: "Hello from Worker API!" }), {
@@ -11,8 +12,7 @@ export default {
       return new Response("Not found", { status: 404 });
     }
 
-    // Serve static assets via the ASSETS binding
-    // env.ASSETS.fetch(request) will look up files uploaded from the directory in wrangler.toml
+    // Static assets
     return env.ASSETS.fetch(request);
   },
 };
